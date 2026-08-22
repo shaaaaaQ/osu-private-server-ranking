@@ -1,5 +1,7 @@
 # osu! Private Server Ranking
 
+現時点ではbancho.pyのみ対応
+
 このプロジェクトには、OpenAI Codexを使用して生成したコードが含まれています。
 
 ## ビルド
