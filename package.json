@@ -1,0 +1,17 @@
+{
+  "name": "osu-private-server-ranking",
+  "version": "0.2.0",
+  "license": "MIT-0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.6.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.6",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  }
+}

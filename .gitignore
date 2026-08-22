@@ -1,0 +1,12 @@
+# pnpm / browser extension
+/node_modules/
+/.pnpm-store/
+/dist/
+/*.zip
+/*.xpi
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
