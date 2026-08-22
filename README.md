@@ -6,7 +6,6 @@
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm check
 pnpm build
 ```
 
