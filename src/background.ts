@@ -226,7 +226,13 @@ function isGetScoresMessage(value: unknown): value is GetScoresMessage {
     && typeof message.mode === "string";
 }
 function isOsuPage(url?: string): boolean {
-  return !!url && /^https:\/\/osu\.ppy\.sh\/(beatmapsets|beatmaps)\//.test(url);
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === "https://osu.ppy.sh";
+  } catch {
+    return false;
+  }
 }
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "Request timed out";
