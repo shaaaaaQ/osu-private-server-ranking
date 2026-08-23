@@ -1,5 +1,11 @@
 export {};
 
+import { render as renderPreact } from "preact";
+import type { ComponentChildren } from "preact";
+import { supportsLocale, translationForLocale } from "./content-i18n";
+import type { Translations } from "./content-i18n";
+import { HIT_COLUMNS } from "./score-columns";
+import type { HitColumn } from "./score-columns";
 import { userProfileUrl } from "./server-settings";
 
 type ServerInfo = { id: string; name: string };
@@ -65,85 +71,6 @@ type LoadedServer = {
   error?: string;
 };
 
-type HitCountField = "countPerfect" | "countGreat" | "countGood" | "countOk" | "countMeh" | "countMiss";
-type HitColumn = { field: HitCountField; label: string; modifier: string };
-
-const HIT_COLUMNS: Record<string, readonly HitColumn[]> = {
-  osu: [
-    { field: "countGreat", label: "GREAT", modifier: "great" },
-    { field: "countOk", label: "OK", modifier: "ok" },
-    { field: "countMeh", label: "MEH", modifier: "meh" },
-    { field: "countMiss", label: "MISS", modifier: "miss" },
-  ],
-  taiko: [
-    { field: "countGreat", label: "GREAT", modifier: "great" },
-    { field: "countOk", label: "OK", modifier: "ok" },
-    { field: "countMiss", label: "MISS", modifier: "miss" },
-  ],
-  fruits: [
-    { field: "countGreat", label: "GREAT", modifier: "great" },
-    { field: "countOk", label: "L DRP", modifier: "large_tick_hit" },
-    { field: "countGood", label: "S DRP MISS", modifier: "small_tick_miss" },
-    { field: "countMiss", label: "MISS", modifier: "miss" },
-  ],
-  mania: [
-    { field: "countPerfect", label: "PERFECT", modifier: "perfect" },
-    { field: "countGreat", label: "GREAT", modifier: "great" },
-    { field: "countGood", label: "GOOD", modifier: "good" },
-    { field: "countOk", label: "OK", modifier: "ok" },
-    { field: "countMeh", label: "MEH", modifier: "meh" },
-    { field: "countMiss", label: "MISS", modifier: "miss" },
-  ],
-};
-
-type Translations = {
-  privateServer: string;
-  server: string;
-  allPrivateServers: string;
-  loadingServerList: string;
-  loadedServers: (loaded: number, total: number) => string;
-  loaded: string;
-  loading: string;
-  unavailable: string;
-  configErrorSuffix: string;
-  rank: string;
-  score: string;
-  accuracy: string;
-  player: string;
-  maxCombo: string;
-  time: string;
-  mods: string;
-  achieved: string;
-  totalScore: string;
-  loadingScores: string;
-  noScoresFound: string;
-  noServersConfigured: string;
-};
-
-// Add another language here using its <html lang> base code. Unknown languages use English.
-const TRANSLATIONS: Record<string, Translations> = {
-  en: {
-    privateServer: "Private Server", server: "Server", allPrivateServers: "All Private Servers",
-    loadingServerList: "Loading server list…", loadedServers: (loaded, total) => `Loaded ${loaded} / ${total} servers`,
-    loaded: "Loaded", loading: "Loading", unavailable: "Unavailable",
-    configErrorSuffix: "Check the extension settings.", rank: "Rank", score: "Score", accuracy: "Accuracy",
-    player: "Player", maxCombo: "Max Combo",
-    time: "Time", mods: "Mods", achieved: "achieved", totalScore: "Total Score",
-    loadingScores: "Loading Private Server scores…", noScoresFound: "No scores found",
-    noServersConfigured: "No Private Servers configured",
-  },
-  ja: {
-    privateServer: "プライベートサーバー", server: "サーバー", allPrivateServers: "すべてのプライベートサーバー",
-    loadingServerList: "サーバー一覧を読み込み中…", loadedServers: (loaded, total) => `読み込み済み ${loaded} / ${total} サーバー`,
-    loaded: "読み込み済み", loading: "読み込み中", unavailable: "利用不可",
-    configErrorSuffix: "拡張機能の設定を確認してください。", rank: "順位", score: "スコア", accuracy: "精度",
-    player: "プレイヤー", maxCombo: "最大コンボ",
-    time: "時間", mods: "Mods", achieved: "達成日", totalScore: "合計スコア",
-    loadingScores: "プライベートサーバーのスコアを読み込み中…", noScoresFound: "スコアがありません",
-    noServersConfigured: "Private Serverが設定されていません",
-  },
-};
-
 const ROOT_ID = "osu-private-ranking-root";
 const number = new Intl.NumberFormat();
 const webext = (globalThis as typeof globalThis & { browser?: typeof chrome }).browser ?? chrome;
@@ -172,11 +99,11 @@ function pageLocale(): string {
 
 function activeLocale(): string {
   const locale = pageLocale().toLowerCase();
-  return TRANSLATIONS[locale.split("-")[0]] ? locale : "en";
+  return supportsLocale(locale) ? locale : "en";
 }
 
 function translations(): Translations {
-  return TRANSLATIONS[activeLocale().split("-")[0]] ?? TRANSLATIONS.en;
+  return translationForLocale(activeLocale());
 }
 
 function pageContext(): { beatmapId: number; mode: string; key: string } | null {
@@ -281,6 +208,7 @@ function ensureRoot(): void {
     privateTab = existingTab;
     return;
   }
+  if (existing instanceof HTMLElement) renderPreact(null, existing);
   existing?.remove();
   existingTab?.remove();
 
@@ -304,7 +232,11 @@ function ensureRoot(): void {
     privateTab.setAttribute("aria-selected", "true");
     privateTab.tabIndex = 0;
     const privateLabel = translations().privateServer;
-    privateTab.innerHTML = `<span class="fake-bold" data-content="${escapeHtml(privateLabel)}">${escapeHtml(privateLabel)}</span>`;
+    const label = document.createElement("span");
+    label.className = "fake-bold";
+    label.dataset.content = privateLabel;
+    label.textContent = privateLabel;
+    privateTab.append(label);
     tabHost.append(privateTab);
     scoreboard.append(tabHost);
     wrapper.append(scoreboard);
@@ -442,8 +374,12 @@ function deactivatePrivateTab(): void {
 function render(): void {
   ensureRoot();
   if (!root) return;
+  renderPreact(<RankingView />, root);
+}
+
+function RankingView() {
   const t = translations();
-  const fatal = root.getAttribute("data-fatal-error");
+  const fatal = root?.getAttribute("data-fatal-error");
   const scores = selectedScores();
   const best = scores[0] ?? null;
   const myScores = selectedMyScores();
@@ -453,93 +389,94 @@ function render(): void {
   const selectedId = allSelected ? "__all__" : [...selectedServerIds][0] ?? "__all__";
   const hits = hitColumns(currentContext?.mode);
 
-  root.innerHTML = `
+  return <>
     <div class="psr__toolbar">
-      <button class="psr__status-toggle" type="button" data-status-toggle aria-expanded="${statusExpanded}" ${servers.length ? "" : "disabled"}>
-        ${servers.length ? t.loadedServers(loadedCount, servers.length) : t.loadingServerList}
+      <button class="psr__status-toggle" type="button" data-status-toggle aria-expanded={statusExpanded} disabled={!servers.length}>
+        {servers.length ? t.loadedServers(loadedCount, servers.length) : t.loadingServerList}
       </button>
-      <label class="psr__filter">${t.server}
-        <select data-server-filter ${servers.length ? "" : "disabled"}>
-          <option value="__all__" ${selectedId === "__all__" ? "selected" : ""}>${t.allPrivateServers}</option>
-          ${servers.map((server) => `<option value="${escapeHtml(server.id)}" ${selectedId === server.id ? "selected" : ""}>${escapeHtml(server.name)}</option>`).join("")}
+      <label class="psr__filter">{t.server}
+        <select data-server-filter value={selectedId} disabled={!servers.length}>
+          <option value="__all__">{t.allPrivateServers}</option>
+          {servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
         </select>
       </label>
     </div>
-    <div class="psr__status-details" data-status-details ${statusExpanded ? "" : "hidden"}>${statusChips()}</div>
-    ${fatal ? `<div class="psr__notice psr__notice--error">${escapeHtml(fatal)} — ${t.configErrorSuffix}</div>` : ""}
-    ${best ? `<div class="beatmap-scoreboard-top">
-      ${featuredScore(best, 1)}
-      ${myBest && !sameScore(best, myBest) ? featuredScore(myBest, combinedPosition(myBest)) : ""}
-    </div>` : ""}
+    <div class="psr__status-details" data-status-details hidden={!statusExpanded}><StatusChips /></div>
+    {fatal ? <div class="psr__notice psr__notice--error">{fatal} — {t.configErrorSuffix}</div> : null}
+    {best ? <div class="beatmap-scoreboard-top">
+      <FeaturedScore score={best} position={1} />
+      {myBest && !sameScore(best, myBest) ? <FeaturedScore score={myBest} position={combinedPosition(myBest)} /> : null}
+    </div> : null}
     <div class="beatmap-scoreboard-table psr__table-wrap">
       <table class="beatmap-scoreboard-table__table">
         <thead><tr>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--rank">${t.rank}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--rank">{t.rank}</th>
           <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--grade"></th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--score">${t.score}</th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--accuracy">${t.accuracy}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--score">{t.score}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--accuracy">{t.accuracy}</th>
           <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--flag"></th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--player">${t.player}</th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--maxcombo">${t.maxCombo}</th>
-          ${hits.map((hit) => `<th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--hitstat beatmap-scoreboard-table__header--hit-${hit.modifier}">${hitLabel(hit)}</th>`).join("")}
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--player">{t.player}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--maxcombo">{t.maxCombo}</th>
+          {hits.map((hit) => <th key={hit.field} class={`beatmap-scoreboard-table__header beatmap-scoreboard-table__header--hitstat beatmap-scoreboard-table__header--hit-${hit.modifier}`}>{hitLabel(hit)}</th>)}
           <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--pp">pp</th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--time">${t.time}</th>
-          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--mods">${t.mods}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--time">{t.time}</th>
+          <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--mods">{t.mods}</th>
           <th class="beatmap-scoreboard-table__header beatmap-scoreboard-table__header--popup-menu"></th>
         </tr></thead>
         <tbody class="beatmap-scoreboard-table__body">
-          ${scores.length ? scores.map((score, index) => scoreRow(score, index === 0, hits)).join("") : emptyState(loadingCount, selectedId, hits.length)}
+          {scores.length
+            ? scores.map((score, index) => <ScoreRow key={`${score.serverId}:${score.scoreId ?? `${score.user.id}:${score.score}:${score.playedAt}`}`} score={score} first={index === 0} hits={hits} />)
+            : <EmptyState loadingCount={loadingCount} selectedId={selectedId} hitColumnCount={hits.length} />}
         </tbody>
       </table>
-    </div>`;
-  applyAvatarImages();
+    </div>
+  </>;
 }
 
-function statusChips(): string {
-  if (!servers.length) return "";
+function StatusChips() {
+  if (!servers.length) return null;
   const t = translations();
-  return `<span class="psr__statuses">${servers.map((server) => {
+  return <span class="psr__statuses">{servers.map((server) => {
     const result = loaded.get(server.id);
     const status = result?.status ?? "loading";
     const label = status === "loaded" ? t.loaded : status === "error" ? t.unavailable : t.loading;
-    const title = result?.error ? ` title="${escapeHtml(result.error)}"` : "";
-    return `<span class="psr__status psr__status--${status}"${title}>${escapeHtml(server.name)} · ${label}</span>`;
-  }).join("")}</span>`;
+    return <span key={server.id} class={`psr__status psr__status--${status}`} title={result?.error}>{server.name} · {label}</span>;
+  })}</span>;
 }
 
-function featuredScore(score: Score, position: number | string): string {
+function FeaturedScore({ score, position }: { score: Score; position: number | string }) {
   const t = translations();
   const rankClass = normalizedGrade(score.grade);
   const hits = hitColumns(score.mode);
-  return `<div class="beatmap-scoreboard-top__item"><div class="beatmap-score-top">
+  return <div class="beatmap-scoreboard-top__item"><div class="beatmap-score-top">
     <div class="beatmap-score-top__section">
       <div class="beatmap-score-top__wrapping-container beatmap-score-top__wrapping-container--left">
-        <div class="beatmap-score-top__position"><div class="beatmap-score-top__position-number">#${position}</div>${rankClass ? `<div class="score-rank score-rank--tiny score-rank--${rankClass}"></div>` : ""}</div>
-        <div class="beatmap-score-top__avatar">${topAvatar(score)}</div>
+        <div class="beatmap-score-top__position"><div class="beatmap-score-top__position-number">#{position}</div>{rankClass ? <div class={`score-rank score-rank--tiny score-rank--${rankClass}`}></div> : null}</div>
+        <div class="beatmap-score-top__avatar"><TopAvatar score={score} /></div>
         <div class="beatmap-score-top__user-box">
-          ${playerLink(score, "beatmap-score-top__username u-hover")}
-          <div class="beatmap-score-top__achieved">${t.achieved} ${formatTime(score.playedAt, "long")}</div>
-          <div class="beatmap-score-top__flags">${flag(score.user.countryCode)}${serverBadge(score)}</div>
+          <PlayerLink score={score} className="beatmap-score-top__username u-hover" />
+          <div class="beatmap-score-top__achieved">{t.achieved} <FormattedTime value={score.playedAt} style="long" /></div>
+          <div class="beatmap-score-top__flags"><Flag code={score.user.countryCode} /><ServerBadge score={score} /></div>
         </div>
       </div>
       <div class="beatmap-score-top__wrapping-container beatmap-score-top__wrapping-container--right">
-        <div class="beatmap-score-top__stats"><div class="beatmap-score-top__stat"><div class="beatmap-score-top__stat-header beatmap-score-top__stat-header--wider">${t.totalScore}</div><div class="beatmap-score-top__stat-value beatmap-score-top__stat-value--score">${number.format(score.score)}</div></div></div>
+        <div class="beatmap-score-top__stats"><div class="beatmap-score-top__stat"><div class="beatmap-score-top__stat-header beatmap-score-top__stat-header--wider">{t.totalScore}</div><div class="beatmap-score-top__stat-value beatmap-score-top__stat-value--score">{number.format(score.score)}</div></div></div>
         <div class="beatmap-score-top__stats">
-          ${topStat(t.accuracy, formatAccuracy(score.accuracy), undefined, true, score.accuracy === 100)}
-          ${topStat(t.maxCombo, nullableNumber(score.maxCombo, "x"), undefined, true, score.perfect === true)}
+          <TopStat label={t.accuracy} value={formatAccuracy(score.accuracy)} wider perfect={score.accuracy === 100} />
+          <TopStat label={t.maxCombo} value={nullableNumber(score.maxCombo, "x")} wider perfect={score.perfect === true} />
         </div>
         <div class="beatmap-score-top__stats beatmap-score-top__stats--wrappable">
-          ${hits.map((hit) => topStat(hitLabel(hit), nullableNumber(score[hit.field]), `hit-${hit.modifier}`)).join("")}
-          ${topStat("pp", score.pp == null ? "—" : number.format(Math.round(score.pp)))}
-          ${topStat(t.time, formatTime(score.playedAt, "short"))}
-          <div class="beatmap-score-top__stat"><div class="beatmap-score-top__stat-header beatmap-score-top__stat-header--mods">${t.mods}</div><div class="beatmap-score-top__stat-value beatmap-score-top__stat-value--mods">${mods(score.mods)}</div></div>
+          {hits.map((hit) => <TopStat key={hit.field} label={hitLabel(hit)} value={nullableNumber(score[hit.field])} hitModifier={`hit-${hit.modifier}`} />)}
+          <TopStat label="pp" value={score.pp == null ? "—" : number.format(Math.round(score.pp))} />
+          <TopStat label={t.time} value={<FormattedTime value={score.playedAt} style="short" />} />
+          <div class="beatmap-score-top__stat"><div class="beatmap-score-top__stat-header beatmap-score-top__stat-header--mods">{t.mods}</div><div class="beatmap-score-top__stat-value beatmap-score-top__stat-value--mods"><Mods items={score.mods} /></div></div>
         </div>
       </div>
     </div>
-  </div></div>`;
+  </div></div>;
 }
 
-function topStat(label: string, value: string, hitModifier?: string, wider = false, perfect = false): string {
+function TopStat({ label, value, hitModifier, wider = false, perfect = false }: { label: string; value: ComponentChildren; hitModifier?: string; wider?: boolean; perfect?: boolean }) {
   const headerClasses = ["beatmap-score-top__stat-header"];
   const valueClasses = ["beatmap-score-top__stat-value"];
   if (wider) headerClasses.push("beatmap-score-top__stat-header--wider");
@@ -549,43 +486,42 @@ function topStat(label: string, value: string, hitModifier?: string, wider = fal
     headerClasses.push(`beatmap-score-top__stat-header--${hitModifier}`);
     valueClasses.push(`beatmap-score-top__stat-value--${hitModifier}`);
   }
-  return `<div class="beatmap-score-top__stat"><div class="${headerClasses.join(" ")}">${label}</div><div class="${valueClasses.join(" ")}">${value}</div></div>`;
+  return <div class="beatmap-score-top__stat"><div class={headerClasses.join(" ")}>{label}</div><div class={valueClasses.join(" ")}>{value}</div></div>;
 }
 
-function scoreRow(score: Score, first: boolean, hits: readonly HitColumn[]): string {
+function ScoreRow({ score, first, hits }: { score: Score; first: boolean; hits: readonly HitColumn[] }) {
   const rankClass = normalizedGrade(score.grade);
   const self = settings.servers.find((server) => server.id === score.serverId)?.myUserId === String(score.user.id);
-  return `<tr class="beatmap-scoreboard-table__body-row beatmap-scoreboard-table__body-row--highlightable${first ? " beatmap-scoreboard-table__body-row--first" : ""}${self ? " beatmap-scoreboard-table__body-row--self" : ""}">
-    ${tableCell(`#${score.combinedRank}`, "rank")}
-    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content beatmap-scoreboard-table__cell-content--grade">${rankClass ? `<span class="score-rank score-rank--tiny score-rank--${rankClass}"></span>` : ""}</span></td>
-    ${tableCell(number.format(score.score), "score")}
-    ${tableCell(formatAccuracy(score.accuracy))}
-    ${tableCell(flag(score.user.countryCode), "flag")}
-    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player u-relative"><span class="beatmap-scoreboard-table__cell-content psr__player-cell">${playerLink(score, "beatmap-scoreboard-table__user-link")}${serverBadge(score)}</span></td>
-    ${tableCell(nullableNumber(score.maxCombo, "x"))}
-    ${hits.map((hit) => tableCell(nullableNumber(score[hit.field]), `hit-${hit.modifier}`, score[hit.field] === 0)).join("")}
-    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content"><span class="pp-value" title="${score.pp ?? ""}">${score.pp == null ? "—" : number.format(Math.round(score.pp))}</span></span></td>
-    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content beatmap-scoreboard-table__cell-content--time">${formatTime(score.playedAt, "short")}</span></td>
-    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player"><span class="beatmap-scoreboard-table__cell-content"><span class="beatmap-scoreboard-table__mods">${mods(score.mods)}</span></span></td>
+  return <tr class={`beatmap-scoreboard-table__body-row beatmap-scoreboard-table__body-row--highlightable${first ? " beatmap-scoreboard-table__body-row--first" : ""}${self ? " beatmap-scoreboard-table__body-row--self" : ""}`}>
+    <TableCell value={`#${score.combinedRank}`} modifier="rank" />
+    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content beatmap-scoreboard-table__cell-content--grade">{rankClass ? <span class={`score-rank score-rank--tiny score-rank--${rankClass}`}></span> : null}</span></td>
+    <TableCell value={number.format(score.score)} modifier="score" />
+    <TableCell value={formatAccuracy(score.accuracy)} />
+    <TableCell value={<Flag code={score.user.countryCode} />} modifier="flag" />
+    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player u-relative"><span class="beatmap-scoreboard-table__cell-content psr__player-cell"><PlayerLink score={score} className="beatmap-scoreboard-table__user-link" /><ServerBadge score={score} /></span></td>
+    <TableCell value={nullableNumber(score.maxCombo, "x")} />
+    {hits.map((hit) => <TableCell key={hit.field} value={nullableNumber(score[hit.field])} modifier={`hit-${hit.modifier}`} zero={score[hit.field] === 0} />)}
+    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content"><span class="pp-value" title={score.pp == null ? "" : String(score.pp)}>{score.pp == null ? "—" : number.format(Math.round(score.pp))}</span></span></td>
+    <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content beatmap-scoreboard-table__cell-content--time"><FormattedTime value={score.playedAt} style="short" /></span></td>
+    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player"><span class="beatmap-scoreboard-table__cell-content"><span class="beatmap-scoreboard-table__mods"><Mods items={score.mods} /></span></span></td>
     <td class="beatmap-scoreboard-table__cell"></td>
-  </tr>`;
+  </tr>;
 }
 
-function tableCell(value: string, modifier?: string, zero = false): string {
+function TableCell({ value, modifier, zero = false }: { value: ComponentChildren; modifier?: string; zero?: boolean }) {
   const suffix = modifier ? ` beatmap-scoreboard-table__cell-content--${modifier}` : "";
   const zeroClass = zero ? " beatmap-scoreboard-table__cell-content--zero" : "";
-  return `<td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content${suffix}${zeroClass}">${value}</span></td>`;
+  return <td class="beatmap-scoreboard-table__cell"><span class={`beatmap-scoreboard-table__cell-content${suffix}${zeroClass}`}>{value}</span></td>;
 }
 
-function serverBadge(score: Score): string {
-  return `<span class="psr__server-badge">${escapeHtml(score.serverName)}</span>`;
+function ServerBadge({ score }: { score: Score }) {
+  return <span class="psr__server-badge">{score.serverName}</span>;
 }
 
-function playerLink(score: Score, className: string): string {
-  const username = escapeHtml(score.user.username);
+function PlayerLink({ score, className }: { score: Score; className: string }) {
   const href = playerProfileHref(score);
-  if (!href) return `<span class="${className}">${username}</span>`;
-  return `<a class="${className} psr__player-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${username}</a>`;
+  if (!href) return <span class={className}>{score.user.username}</span>;
+  return <a class={`${className} psr__player-link`} href={href} target="_blank" rel="noopener noreferrer">{score.user.username}</a>;
 }
 
 function playerProfileHref(score: Score): string | null {
@@ -594,37 +530,28 @@ function playerProfileHref(score: Score): string | null {
   return userProfileUrl(server.domain, server.userProfileUrlTemplate, score.user.id);
 }
 
-function emptyState(loadingCount: number, selectedId: string, hitColumnCount: number): string {
+function EmptyState({ loadingCount, selectedId, hitColumnCount }: { loadingCount: number; selectedId: string; hitColumnCount: number }) {
   const t = translations();
   if (selectedId !== "__all__") {
     const result = loaded.get(selectedId);
-    if (result?.status === "loading") return emptyTableRow(`${escapeHtml(serverName(selectedId))} · ${t.loading}…`, hitColumnCount);
-    if (result?.status === "error") return emptyTableRow(`${escapeHtml(serverName(selectedId))} · ${t.unavailable}`, hitColumnCount);
+    if (result?.status === "loading") return <EmptyTableRow message={`${serverName(selectedId)} · ${t.loading}…`} hitColumnCount={hitColumnCount} />;
+    if (result?.status === "error") return <EmptyTableRow message={`${serverName(selectedId)} · ${t.unavailable}`} hitColumnCount={hitColumnCount} />;
   }
-  if (!servers.length) return emptyTableRow(t.noServersConfigured, hitColumnCount);
-  return emptyTableRow(loadingCount ? t.loadingScores : t.noScoresFound, hitColumnCount);
+  if (!servers.length) return <EmptyTableRow message={t.noServersConfigured} hitColumnCount={hitColumnCount} />;
+  return <EmptyTableRow message={loadingCount ? t.loadingScores : t.noScoresFound} hitColumnCount={hitColumnCount} />;
 }
 
-function emptyTableRow(message: string, hitColumnCount: number): string {
-  return `<tr><td class="psr__empty" colspan="${11 + hitColumnCount}">${message}</td></tr>`;
+function EmptyTableRow({ message, hitColumnCount }: { message: string; hitColumnCount: number }) {
+  return <tr><td class="psr__empty" colSpan={11 + hitColumnCount}>{message}</td></tr>;
 }
 
-function topAvatar(score: Score): string {
+function TopAvatar({ score }: { score: Score }) {
   const avatarUrl = safeHttpsUrl(score.user.avatarUrl);
-  const data = avatarUrl ? ` data-psr-avatar-url="${escapeHtml(avatarUrl)}"` : "";
-  const avatar = `<span class="avatar avatar--guest"${data}></span>`;
+  const avatar = <span class="avatar avatar--guest" style={avatarUrl ? { backgroundImage: `url(${JSON.stringify(avatarUrl)})` } : undefined}></span>;
   const href = playerProfileHref(score);
   return href
-    ? `<a class="u-hover psr__player-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${avatar}</a>`
+    ? <a class="u-hover psr__player-link" href={href} target="_blank" rel="noopener noreferrer">{avatar}</a>
     : avatar;
-}
-
-function applyAvatarImages(): void {
-  root?.querySelectorAll<HTMLElement>("[data-psr-avatar-url]").forEach((avatar) => {
-    const url = safeHttpsUrl(avatar.dataset.psrAvatarUrl);
-    avatar.removeAttribute("data-psr-avatar-url");
-    if (url) avatar.style.backgroundImage = `url(${JSON.stringify(url)})`;
-  });
 }
 
 function safeHttpsUrl(value: string | null | undefined): string | null {
@@ -637,12 +564,11 @@ function safeHttpsUrl(value: string | null | undefined): string | null {
   }
 }
 
-function mods(items: string[]): string {
-  if (!items.length) return `<span class="mods"></span>`;
-  return `<span class="mods">${items.map((item) => {
+function Mods({ items }: { items: string[] }) {
+  return <span class="mods">{items.map((item, index) => {
     const acronym = item.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return `<span class="mod mod--type-${modType(acronym)}" title="${escapeHtml(item)}"><span class="mod__icon mod__icon--${escapeHtml(acronym)}" data-acronym="${escapeHtml(acronym)}"></span></span>`;
-  }).join("")}</span>`;
+    return <span key={`${acronym}:${index}`} class={`mod mod--type-${modType(acronym)}`} title={item}><span class={`mod__icon mod__icon--${acronym}`} data-acronym={acronym}></span></span>;
+  })}</span>;
 }
 
 function modType(acronym: string): string {
@@ -659,10 +585,10 @@ function normalizedGrade(value: string | null): string {
   return ["XH", "X", "SH", "S", "A", "B", "C", "D", "F"].includes(grade) ? grade : "";
 }
 
-function formatTime(value: string | null, style: "long" | "short"): string {
-  if (!value) return "—";
+function FormattedTime({ value, style }: { value: string | null; style: "long" | "short" }) {
+  if (!value) return <>—</>;
   const time = new Date(value);
-  if (Number.isNaN(time.valueOf())) return "—";
+  if (Number.isNaN(time.valueOf())) return <>—</>;
   const elapsed = Date.now() - time.valueOf();
   const future = elapsed < 0;
   const absolute = Math.abs(elapsed);
@@ -681,8 +607,7 @@ function formatTime(value: string | null, style: "long" | "short"): string {
   const locale = activeLocale();
   const text = relativeTimeText(amount, unit, suffix, locale, style);
   const className = style === "short" ? "js-tooltip-time" : "js-timeago";
-  const datetime = style === "long" ? ` datetime="${escapeHtml(value)}"` : "";
-  return `<time class="${className}"${datetime} title="${escapeHtml(value)}">${escapeHtml(text)}</time>`;
+  return <time class={className} dateTime={style === "long" ? value : undefined} title={value}>{text}</time>;
 }
 
 function relativeTimeText(
@@ -724,21 +649,19 @@ function sameScore(left: Score | null, right: Score): boolean {
   if (left.scoreId != null && right.scoreId != null) return left.scoreId === right.scoreId;
   return left.user.id === right.user.id && left.score === right.score && left.playedAt === right.playedAt;
 }
-function flag(code: string | null): string {
-  if (!code || !/^[A-Z]{2}$/i.test(code)) return "";
+function Flag({ code }: { code: string | null }) {
+  if (!code || !/^[A-Z]{2}$/i.test(code)) return null;
   const normalized = code.toUpperCase();
   const asset = [...normalized]
     .map((letter) => (127397 + letter.charCodeAt(0)).toString(16))
     .join("-");
-  return `<span class="flag-country flag-country--flat" title="${normalized}" style="background-image:url('/assets/images/flags/${asset}.svg')"></span>`;
+  return <span class="flag-country flag-country--flat" title={normalized} style={{ backgroundImage: `url('/assets/images/flags/${asset}.svg')` }}></span>;
 }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function escapeHtml(value: unknown): string {
-  return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
-}
 
 function removeInjectedUi(): void {
   deactivatePrivateTab();
+  if (root) renderPreact(null, root);
   document.querySelector("[data-psr-synthetic-wrapper]")?.remove();
   document.querySelector("[data-psr-private-tab]")?.remove();
   document.getElementById(ROOT_ID)?.remove();

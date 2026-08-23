@@ -1,5 +1,6 @@
 export {};
 
+import { render as renderPreact } from "preact";
 import { adapters, getAdapter } from "./adapters";
 import { defaultUserProfileUrlTemplate } from "./server-settings";
 import type { AdapterId, ServerSetting } from "./server-settings";
@@ -36,72 +37,81 @@ lazyLoadInput.addEventListener("change", async () => {
 });
 
 function render(): void {
-  serverList.replaceChildren(...servers.map(serverRow));
+  renderPreact(<>{servers.map((server) => <ServerRow key={server.id} server={server} />)}</>, serverList);
   status.textContent = servers.length
     ? `${servers.length}件のサーバーを登録済み（${servers.filter((server) => server.enabled).length}件有効）`
     : "サーバーが登録されていません。";
 }
 
-function serverRow(server: ConfiguredServerSetting): HTMLElement {
-  const row = document.createElement("div");
-  row.className = `server-row${server.enabled ? "" : " server-row--disabled"}`;
-  row.dataset.serverId = server.id;
-  row.innerHTML = `
+function ServerRow({ server }: { server: ConfiguredServerSetting }) {
+  return <div class={`server-row${server.enabled ? "" : " server-row--disabled"}`} data-server-id={server.id}>
     <div class="server-summary">
-      <strong>${escapeHtml(server.name)}</strong>
-      <span>${escapeHtml(server.domain)}</span>
+      <strong>{server.name}</strong>
+      <span>{server.domain}</span>
     </div>
     <label class="toggle server-status">
-      <input name="enabled" type="checkbox"${server.enabled ? " checked" : ""}>
-      <span>${server.enabled ? "有効" : "無効"}</span>
+      <input name="enabled" type="checkbox" checked={server.enabled} />
+      <span>{server.enabled ? "有効" : "無効"}</span>
     </label>
-    <button type="button" data-edit>編集</button>`;
-  return row;
+    <button type="button" data-edit>編集</button>
+  </div>;
 }
 
 function openEditDialog(server: ConfiguredServerSetting): void {
-  const form = document.createElement("form");
-  form.className = "server-card server-card--edit";
-  form.dataset.serverId = server.id;
-  form.innerHTML = `
-    ${enabledField(server.enabled)}
-    ${field("domain", "ドメイン", server.domain, "example.com", "text", true)}
-    ${field("name", "表示名", server.name, "Server A", "text", true)}
-    ${adapterField(server.adapter)}
-    ${field("apiEndpoint", "API endpoint", server.apiEndpoint, "https://api.example.com/v1", "url", true)}
-    ${field("timezone", "タイムゾーン", server.timezone, "Asia/Tokyo", "text", true)}
-    ${field("myUserId", "自分のユーザーID", server.myUserId ?? "", "任意", "number", false)}
-    ${field("userProfileUrlTemplate", "ユーザーページURL", server.userProfileUrlTemplate, "https://osu.example.com/users/{userId}", "text", true)}
+  renderPreact(<EditServerForm server={server} />, editContent);
+  const form = editContent.querySelector<HTMLFormElement>("form")!;
+  initializeEndpointControls(form);
+  editDialog.showModal();
+}
+
+function EditServerForm({ server }: { server: ConfiguredServerSetting }) {
+  return <form class="server-card server-card--edit" data-server-id={server.id}>
+    <EnabledField enabled={server.enabled} />
+    <Field name="domain" label="ドメイン" value={server.domain} placeholder="example.com" type="text" required />
+    <Field name="name" label="表示名" value={server.name} placeholder="Server A" type="text" required />
+    <AdapterField selected={server.adapter} />
+    <Field name="apiEndpoint" label="API endpoint" value={server.apiEndpoint} placeholder="https://api.example.com/v1" type="url" required />
+    <Field name="timezone" label="タイムゾーン" value={server.timezone} placeholder="Asia/Tokyo" type="text" required />
+    <Field name="myUserId" label="自分のユーザーID" value={server.myUserId ?? ""} placeholder="任意" type="number" />
+    <Field name="userProfileUrlTemplate" label="ユーザーページURL" value={server.userProfileUrlTemplate} placeholder="https://osu.example.com/users/{userId}" type="text" required />
     <div class="server-actions">
       <button class="save" type="submit">変更を保存</button>
       <button class="danger" type="button" data-remove>削除</button>
       <output aria-live="polite"></output>
-    </div>`;
-  initializeEndpointControls(form);
-  editContent.replaceChildren(form);
-  editDialog.showModal();
+    </div>
+  </form>;
 }
 
-function field(
-  name: keyof Omit<ServerSetting, "id">,
-  label: string,
-  value: string,
-  placeholder: string,
-  type: string,
-  required: boolean,
-  help?: string,
-): string {
-  const minimum = type === "number" ? ' min="1" step="1"' : "";
-  return `<label class="field"><span>${label}</span><input name="${name}" type="${type}" value="${escapeHtml(value)}" placeholder="${placeholder}"${minimum}${required ? " required" : ""}>${help ? `<small>${help}</small>` : ""}</label>`;
+type FieldProps = {
+  name: keyof Omit<ServerSetting, "id">;
+  label: string;
+  value: string;
+  placeholder: string;
+  type: string;
+  required?: boolean;
+  help?: string;
+};
+
+function Field({ name, label, value, placeholder, type, required = false, help }: FieldProps) {
+  const numberProps = type === "number" ? { min: 1, step: 1 } : {};
+  return <label class="field">
+    <span>{label}</span>
+    <input name={name} type={type} value={value} placeholder={placeholder} required={required} {...numberProps} />
+    {help ? <small>{help}</small> : null}
+  </label>;
 }
 
-function adapterField(selected: AdapterId): string {
-  const options = adapters.map((adapter) => `<option value="${adapter.id}"${adapter.id === selected ? " selected" : ""}>${adapter.label}</option>`).join("");
-  return `<label class="field"><span>Adapter</span><select name="adapter">${options}</select></label>`;
+function AdapterField({ selected }: { selected: AdapterId }) {
+  return <label class="field">
+    <span>Adapter</span>
+    <select name="adapter" value={selected}>
+      {adapters.map((adapter) => <option key={adapter.id} value={adapter.id}>{adapter.label}</option>)}
+    </select>
+  </label>;
 }
 
-function enabledField(enabled: boolean): string {
-  return `<label class="toggle server-enabled"><input name="enabled" type="checkbox"${enabled ? " checked" : ""}><span>有効</span></label>`;
+function EnabledField({ enabled }: { enabled: boolean }) {
+  return <label class="toggle server-enabled"><input name="enabled" type="checkbox" checked={enabled} /><span>有効</span></label>;
 }
 
 addForm.addEventListener("submit", async (event) => {
@@ -324,8 +334,5 @@ document.addEventListener("change", (event) => {
 });
 function saveServers(): Promise<void> { return webext.storage.sync.set({ servers }); }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
-}
 
 void init();

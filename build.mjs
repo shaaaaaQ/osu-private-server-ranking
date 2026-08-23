@@ -6,7 +6,7 @@ for (const browser of ["chrome", "firefox"]) {
   const outdir = `dist/${browser}`;
   await mkdir(outdir, { recursive: true });
   await build({
-    entryPoints: ["src/background.ts", "src/content.ts", "src/options.ts"],
+    entryPoints: ["src/background.ts", "src/content.tsx", "src/options.tsx"],
     outdir,
     bundle: true,
     format: "iife",
