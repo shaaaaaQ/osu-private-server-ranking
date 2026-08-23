@@ -13,4 +13,25 @@ export type ServerSetting = {
   // Optional so settings written by versions before adapter support remain valid.
   adapter?: AdapterId;
   apiEndpoint?: string;
+  userProfileUrlTemplate?: string;
 };
+
+export function defaultUserProfileUrlTemplate(domain: string): string {
+  return `https://osu.${domain}/users/{userId}`;
+}
+
+export function userProfileUrl(
+  domain: string,
+  template: string | undefined,
+  userId: number,
+): string | null {
+  const source = template ?? defaultUserProfileUrlTemplate(domain);
+  if ((source.match(/\{userId\}/g) ?? []).length !== 1) return null;
+  const value = source.replace("{userId}", encodeURIComponent(String(userId)));
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}

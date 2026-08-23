@@ -1,5 +1,7 @@
 export {};
 
+import { userProfileUrl } from "./server-settings";
+
 type ServerInfo = { id: string; name: string };
 type ServerStatus = "loading" | "loaded" | "error";
 
@@ -49,6 +51,7 @@ type ServerSetting = ServerInfo & {
   timezone: string;
   myUserId?: string;
   enabled?: boolean;
+  userProfileUrlTemplate?: string;
 };
 
 type ScoresMessageResponse =
@@ -489,6 +492,7 @@ function render(): void {
         </tbody>
       </table>
     </div>`;
+  applyAvatarImages();
 }
 
 function statusChips(): string {
@@ -513,7 +517,7 @@ function featuredScore(score: Score, position: number | string): string {
         <div class="beatmap-score-top__position"><div class="beatmap-score-top__position-number">#${position}</div>${rankClass ? `<div class="score-rank score-rank--tiny score-rank--${rankClass}"></div>` : ""}</div>
         <div class="beatmap-score-top__avatar">${topAvatar(score)}</div>
         <div class="beatmap-score-top__user-box">
-          <span class="beatmap-score-top__username">${escapeHtml(score.user.username)}</span>
+          ${playerLink(score, "beatmap-score-top__username u-hover")}
           <div class="beatmap-score-top__achieved">${t.achieved} ${formatTime(score.playedAt, "long")}</div>
           <div class="beatmap-score-top__flags">${flag(score.user.countryCode)}${serverBadge(score)}</div>
         </div>
@@ -557,7 +561,7 @@ function scoreRow(score: Score, first: boolean, hits: readonly HitColumn[]): str
     ${tableCell(number.format(score.score), "score")}
     ${tableCell(formatAccuracy(score.accuracy))}
     ${tableCell(flag(score.user.countryCode), "flag")}
-    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player u-relative"><span class="beatmap-scoreboard-table__cell-content psr__player-cell"><span class="beatmap-scoreboard-table__user-link">${escapeHtml(score.user.username)}</span>${serverBadge(score)}</span></td>
+    <td class="beatmap-scoreboard-table__cell beatmap-scoreboard-table__cell--player u-relative"><span class="beatmap-scoreboard-table__cell-content psr__player-cell">${playerLink(score, "beatmap-scoreboard-table__user-link")}${serverBadge(score)}</span></td>
     ${tableCell(nullableNumber(score.maxCombo, "x"))}
     ${hits.map((hit) => tableCell(nullableNumber(score[hit.field]), `hit-${hit.modifier}`, score[hit.field] === 0)).join("")}
     <td class="beatmap-scoreboard-table__cell"><span class="beatmap-scoreboard-table__cell-content"><span class="pp-value" title="${score.pp ?? ""}">${score.pp == null ? "—" : number.format(Math.round(score.pp))}</span></span></td>
@@ -577,6 +581,19 @@ function serverBadge(score: Score): string {
   return `<span class="psr__server-badge">${escapeHtml(score.serverName)}</span>`;
 }
 
+function playerLink(score: Score, className: string): string {
+  const username = escapeHtml(score.user.username);
+  const href = playerProfileHref(score);
+  if (!href) return `<span class="${className}">${username}</span>`;
+  return `<a class="${className} psr__player-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${username}</a>`;
+}
+
+function playerProfileHref(score: Score): string | null {
+  const server = settings.servers.find((candidate) => candidate.id === score.serverId);
+  if (!server || !/^(?=.{3,253}$)(?!-)(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i.test(server.domain)) return null;
+  return userProfileUrl(server.domain, server.userProfileUrlTemplate, score.user.id);
+}
+
 function emptyState(loadingCount: number, selectedId: string, hitColumnCount: number): string {
   const t = translations();
   if (selectedId !== "__all__") {
@@ -593,10 +610,31 @@ function emptyTableRow(message: string, hitColumnCount: number): string {
 }
 
 function topAvatar(score: Score): string {
-  const style = score.user.avatarUrl
-    ? ` style="background-image:url('${escapeHtml(score.user.avatarUrl)}')"`
-    : "";
-  return `<span class="avatar avatar--guest"${style}></span>`;
+  const avatarUrl = safeHttpsUrl(score.user.avatarUrl);
+  const data = avatarUrl ? ` data-psr-avatar-url="${escapeHtml(avatarUrl)}"` : "";
+  const avatar = `<span class="avatar avatar--guest"${data}></span>`;
+  const href = playerProfileHref(score);
+  return href
+    ? `<a class="u-hover psr__player-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${avatar}</a>`
+    : avatar;
+}
+
+function applyAvatarImages(): void {
+  root?.querySelectorAll<HTMLElement>("[data-psr-avatar-url]").forEach((avatar) => {
+    const url = safeHttpsUrl(avatar.dataset.psrAvatarUrl);
+    avatar.removeAttribute("data-psr-avatar-url");
+    if (url) avatar.style.backgroundImage = `url(${JSON.stringify(url)})`;
+  });
+}
+
+function safeHttpsUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function mods(items: string[]): string {

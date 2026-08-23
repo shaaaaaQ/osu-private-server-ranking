@@ -36,6 +36,7 @@ pnpm build
 - 有効・無効
 - Adapter（bancho.py / Ripple / Akatsuki）
 - API endpoint
+- ユーザーページURL（`{userId}`を含むURL）
 - タイムゾーン（[IANA Time Zone Database](https://www.iana.org/time-zones) の名称。例: `Asia/Tokyo`）
 - 自分のユーザーID（任意）
 

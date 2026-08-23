@@ -23,6 +23,9 @@
 .psr__table-wrap { overflow-x: auto; }
 .psr__player-cell { align-items: center; display: flex; gap: 6px; min-width: 0; }
 .psr__player-cell .beatmap-scoreboard-table__user-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.psr__player-link { color: inherit; text-decoration: none; }
+.psr__player-link:hover, .psr__player-link:focus-visible { text-decoration: underline; }
+.beatmap-score-top__avatar > .psr__player-link { display: block; }
 .psr__server-badge { display: inline-flex; align-items: center; gap: 4px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; padding: 1px 6px; border-radius: 100px; color: hsl(var(--hsl-c1)); background: hsl(var(--hsl-b4)); }
 .beatmap-score-top__flags .psr__server-badge { font-size: 12px; }
 #osu-private-ranking-root .beatmap-scoreboard-table__header { background: transparent; }

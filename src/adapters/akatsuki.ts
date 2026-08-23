@@ -10,10 +10,11 @@ export const akatsukiAdapter: ServerAdapter = {
   buildScoreUrl(endpoint, request) {
     const url = endpointUrl(endpoint, "scores");
     url.search = new URLSearchParams({
-      b: String(request.beatmapId),
-      mode: String(request.mode),
+      sort: "score,desc",
+      m: String(request.mode),
       relax: "0",
-      sort: "score",
+      b: String(request.beatmapId),
+      p: "1",
       l: String(request.limit),
     }).toString();
     return url;

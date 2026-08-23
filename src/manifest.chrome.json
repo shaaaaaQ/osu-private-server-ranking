@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "osu! Private Server Ranking",
   "description": "複数のosu!プライベートサーバーのスコアをbeatmapページへ統合表示します。",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minimum_chrome_version": "120",
   "permissions": ["storage"],
   "optional_host_permissions": ["https://*/*"],

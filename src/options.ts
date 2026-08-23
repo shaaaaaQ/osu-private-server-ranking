@@ -1,13 +1,21 @@
 export {};
 
 import { adapters, getAdapter } from "./adapters";
+import { defaultUserProfileUrlTemplate } from "./server-settings";
 import type { AdapterId, ServerSetting } from "./server-settings";
 
-type ConfiguredServerSetting = ServerSetting & { adapter: AdapterId; apiEndpoint: string; enabled: boolean };
+type ConfiguredServerSetting = ServerSetting & {
+  adapter: AdapterId;
+  apiEndpoint: string;
+  enabled: boolean;
+  userProfileUrlTemplate: string;
+};
 
 const webext = (globalThis as typeof globalThis & { browser?: typeof chrome }).browser ?? chrome;
 const addForm = document.querySelector<HTMLFormElement>("#add-server-form")!;
 const serverList = document.querySelector<HTMLDivElement>("#server-list")!;
+const editDialog = document.querySelector<HTMLDialogElement>("#edit-server-dialog")!;
+const editContent = document.querySelector<HTMLDivElement>("#edit-server-content")!;
 const status = document.querySelector<HTMLParagraphElement>("#status")!;
 const lazyLoadInput = document.querySelector<HTMLInputElement>("#lazy-load")!;
 let servers: ConfiguredServerSetting[] = [];
@@ -28,15 +36,32 @@ lazyLoadInput.addEventListener("change", async () => {
 });
 
 function render(): void {
-  serverList.replaceChildren(...servers.map(serverCard));
+  serverList.replaceChildren(...servers.map(serverRow));
   status.textContent = servers.length
     ? `${servers.length}件のサーバーを登録済み（${servers.filter((server) => server.enabled).length}件有効）`
     : "サーバーが登録されていません。";
 }
 
-function serverCard(server: ConfiguredServerSetting): HTMLElement {
+function serverRow(server: ConfiguredServerSetting): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `server-row${server.enabled ? "" : " server-row--disabled"}`;
+  row.dataset.serverId = server.id;
+  row.innerHTML = `
+    <div class="server-summary">
+      <strong>${escapeHtml(server.name)}</strong>
+      <span>${escapeHtml(server.domain)}</span>
+    </div>
+    <label class="toggle server-status">
+      <input name="enabled" type="checkbox"${server.enabled ? " checked" : ""}>
+      <span>${server.enabled ? "有効" : "無効"}</span>
+    </label>
+    <button type="button" data-edit>編集</button>`;
+  return row;
+}
+
+function openEditDialog(server: ConfiguredServerSetting): void {
   const form = document.createElement("form");
-  form.className = `server-card${server.enabled ? "" : " server-card--disabled"}`;
+  form.className = "server-card server-card--edit";
   form.dataset.serverId = server.id;
   form.innerHTML = `
     ${enabledField(server.enabled)}
@@ -46,13 +71,15 @@ function serverCard(server: ConfiguredServerSetting): HTMLElement {
     ${field("apiEndpoint", "API endpoint", server.apiEndpoint, "https://api.example.com/v1", "url", true)}
     ${field("timezone", "タイムゾーン", server.timezone, "Asia/Tokyo", "text", true)}
     ${field("myUserId", "自分のユーザーID", server.myUserId ?? "", "任意", "number", false)}
+    ${field("userProfileUrlTemplate", "ユーザーページURL", server.userProfileUrlTemplate, "https://osu.example.com/users/{userId}", "text", true)}
     <div class="server-actions">
       <button class="save" type="submit">変更を保存</button>
       <button class="danger" type="button" data-remove>削除</button>
       <output aria-live="polite"></output>
     </div>`;
   initializeEndpointControls(form);
-  return form;
+  editContent.replaceChildren(form);
+  editDialog.showModal();
 }
 
 function field(
@@ -97,7 +124,7 @@ addForm.addEventListener("submit", async (event) => {
   }
 });
 
-serverList.addEventListener("submit", async (event) => {
+editContent.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.target as HTMLFormElement;
   const output = form.querySelector<HTMLOutputElement>("output")!;
@@ -118,6 +145,7 @@ serverList.addEventListener("submit", async (event) => {
     if (permissionOrigin(candidate.apiEndpoint) !== permissionOrigin(endpointFor(previous))) {
       await releaseUnusedAccess(endpointFor(previous));
     }
+    editDialog.close();
     render();
     status.textContent = `${candidate.name}の変更を保存しました。`;
   } catch (error) {
@@ -126,6 +154,36 @@ serverList.addEventListener("submit", async (event) => {
 });
 
 serverList.addEventListener("click", async (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>("[data-edit]");
+  if (!button) return;
+  const row = button.closest<HTMLElement>(".server-row");
+  const server = servers.find((candidate) => candidate.id === row?.dataset.serverId);
+  if (server) openEditDialog(server);
+});
+
+serverList.addEventListener("change", async (event) => {
+  const input = event.target as HTMLInputElement;
+  if (input.name !== "enabled") return;
+  const row = input.closest<HTMLElement>(".server-row");
+  const server = servers.find((candidate) => candidate.id === row?.dataset.serverId);
+  if (!row || !server) return;
+  const previous = server.enabled;
+  server.enabled = input.checked;
+  row.classList.toggle("server-row--disabled", !input.checked);
+  row.querySelector<HTMLElement>(".server-status span")!.textContent = input.checked ? "有効" : "無効";
+  try {
+    await saveServers();
+    status.textContent = `${server.name}を${input.checked ? "有効" : "無効"}にしました。`;
+  } catch (error) {
+    server.enabled = previous;
+    input.checked = previous;
+    row.classList.toggle("server-row--disabled", !previous);
+    row.querySelector<HTMLElement>(".server-status span")!.textContent = previous ? "有効" : "無効";
+    status.textContent = errorMessage(error);
+  }
+});
+
+editContent.addEventListener("click", async (event) => {
   const button = (event.target as Element).closest<HTMLButtonElement>("[data-remove]");
   if (!button) return;
   const form = button.closest<HTMLFormElement>(".server-card")!;
@@ -134,28 +192,14 @@ serverList.addEventListener("click", async (event) => {
   const [removed] = servers.splice(index, 1);
   await saveServers();
   await releaseUnusedAccess(endpointFor(removed));
+  editDialog.close();
   render();
   status.textContent = `${removed.name}を削除しました。`;
 });
 
-serverList.addEventListener("change", async (event) => {
-  const input = event.target as HTMLInputElement;
-  if (input.name !== "enabled") return;
-  const form = input.closest<HTMLFormElement>(".server-card");
-  const server = servers.find((candidate) => candidate.id === form?.dataset.serverId);
-  if (!form || !server) return;
-  const previous = server.enabled;
-  server.enabled = input.checked;
-  form.classList.toggle("server-card--disabled", !input.checked);
-  try {
-    await saveServers();
-    status.textContent = `${server.name}を${input.checked ? "有効" : "無効"}にしました。`;
-  } catch (error) {
-    server.enabled = previous;
-    input.checked = previous;
-    form.classList.toggle("server-card--disabled", !previous);
-    form.querySelector<HTMLOutputElement>("output")!.textContent = errorMessage(error);
-  }
+editDialog.addEventListener("click", (event) => {
+  if ((event.target as Element).closest("[data-close-dialog]")) editDialog.close();
+  if (event.target === editDialog) editDialog.close();
 });
 
 function settingFromForm(form: HTMLFormElement, id: string): ConfiguredServerSetting {
@@ -166,6 +210,7 @@ function settingFromForm(form: HTMLFormElement, id: string): ConfiguredServerSet
   const apiEndpoint = normalizeEndpoint(String(data.get("apiEndpoint") ?? ""));
   const timezone = String(data.get("timezone") ?? "").trim();
   const myUserId = String(data.get("myUserId") ?? "").trim();
+  const userProfileUrlTemplate = normalizeUserProfileUrlTemplate(String(data.get("userProfileUrlTemplate") ?? ""));
   const enabled = data.has("enabled");
   if (!/^(?=.{3,253}$)(?!-)(?:[a-z0-9-]+\.)+[a-z0-9-]+$/.test(domain)) {
     throw new Error("ドメインは example.com の形式で入力してください。");
@@ -175,7 +220,10 @@ function settingFromForm(form: HTMLFormElement, id: string): ConfiguredServerSet
   try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(); }
   catch { throw new Error("タイムゾーンには有効なIANAタイムゾーンを入力してください。"); }
   if (myUserId && (!/^\d+$/.test(myUserId) || myUserId === "0")) throw new Error("ユーザーIDは正の整数で入力してください。");
-  return { id, domain, name, adapter: adapter.id, apiEndpoint, timezone, enabled, ...(myUserId ? { myUserId } : {}) };
+  return {
+    id, domain, name, adapter: adapter.id, apiEndpoint, timezone, enabled, userProfileUrlTemplate,
+    ...(myUserId ? { myUserId } : {}),
+  };
 }
 
 function normalizeDomain(value: string): string {
@@ -190,6 +238,19 @@ function normalizeEndpoint(value: string): string {
     throw new Error("API endpointにはクエリ等を含まないHTTPS URLを入力してください。");
   }
   return url.toString().replace(/\/$/, "");
+}
+function normalizeUserProfileUrlTemplate(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.match(/\{userId\}/g) ?? []).length !== 1) {
+    throw new Error("ユーザーページURLには{userId}を1つ含めてください。");
+  }
+  let url: URL;
+  try { url = new URL(trimmed.replace("{userId}", "1")); }
+  catch { throw new Error("ユーザーページURLは完全なURLで入力してください。"); }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("ユーザーページURLには認証情報を含まないHTTPS URLを入力してください。");
+  }
+  return trimmed;
 }
 function endpointFor(server: ServerSetting): string {
   return server.apiEndpoint ?? getAdapter(server.adapter).defaultEndpoint(server.domain);
@@ -211,6 +272,8 @@ function withAdapterDefaults(server: ServerSetting): ConfiguredServerSetting {
     adapter: adapter.id,
     apiEndpoint: server.apiEndpoint ?? adapter.defaultEndpoint(server.domain),
     enabled: server.enabled !== false,
+    userProfileUrlTemplate: server.userProfileUrlTemplate
+      ?? defaultUserProfileUrlTemplate(server.domain),
   };
 }
 
@@ -218,9 +281,14 @@ function initializeEndpointControls(form: HTMLFormElement): void {
   const endpoint = form.elements.namedItem("apiEndpoint") as HTMLInputElement | null;
   const domain = form.elements.namedItem("domain") as HTMLInputElement | null;
   const adapterSelect = form.elements.namedItem("adapter") as HTMLSelectElement | null;
-  if (!endpoint || !domain || !adapterSelect) return;
+  const profileUrl = form.elements.namedItem("userProfileUrlTemplate") as HTMLInputElement | null;
+  if (!endpoint || !domain || !adapterSelect || !profileUrl) return;
   const expected = domain.value ? getAdapter(adapterSelect.value).defaultEndpoint(normalizeDomain(domain.value)) : "";
   endpoint.dataset.manual = String(!!endpoint.value && endpoint.value !== expected);
+  const expectedProfile = domain.value
+    ? defaultUserProfileUrlTemplate(normalizeDomain(domain.value))
+    : "";
+  profileUrl.dataset.manual = String(!!profileUrl.value && profileUrl.value !== expectedProfile);
 }
 
 document.addEventListener("input", (event) => {
@@ -228,12 +296,19 @@ document.addEventListener("input", (event) => {
   const form = input.closest<HTMLFormElement>(".server-card");
   if (!form) return;
   const endpoint = form.elements.namedItem("apiEndpoint") as HTMLInputElement;
+  const profileUrl = form.elements.namedItem("userProfileUrlTemplate") as HTMLInputElement;
   if (input.name === "apiEndpoint") {
     endpoint.dataset.manual = "true";
+  } else if (input.name === "userProfileUrlTemplate") {
+    profileUrl.dataset.manual = "true";
   } else if (input.name === "domain" && endpoint.dataset.manual !== "true") {
     const domain = normalizeDomain(input.value);
     const adapter = getAdapter((form.elements.namedItem("adapter") as HTMLSelectElement).value);
     endpoint.value = domain ? adapter.defaultEndpoint(domain) : "";
+  }
+  if (input.name === "domain" && profileUrl.dataset.manual !== "true") {
+    const domain = normalizeDomain(input.value);
+    profileUrl.value = domain ? defaultUserProfileUrlTemplate(domain) : "";
   }
 });
 

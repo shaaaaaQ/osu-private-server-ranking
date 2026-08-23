@@ -25,6 +25,14 @@
         <div id="server-list"></div>
       </section>
 
+      <dialog id="edit-server-dialog" aria-labelledby="edit-server-title">
+        <div class="dialog-header">
+          <h2 id="edit-server-title">サーバーを編集</h2>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="閉じる">×</button>
+        </div>
+        <div id="edit-server-content"></div>
+      </dialog>
+
       <section>
         <div class="section-title"><h2>サーバーを追加</h2></div>
         <form id="add-server-form" class="server-card server-card--new">
@@ -45,6 +53,7 @@
           </label>
           <label class="field"><span>タイムゾーン</span><input name="timezone" type="text" required value="UTC" placeholder="Asia/Tokyo"></label>
           <label class="field"><span>自分のユーザーID</span><input name="myUserId" type="number" min="1" step="1" placeholder="任意"></label>
+          <label class="field"><span>ユーザーページURL</span><input name="userProfileUrlTemplate" type="text" required placeholder="https://osu.example.com/users/{userId}"></label>
           <div class="server-actions">
             <button class="save" type="submit">サーバーを追加</button>
             <output aria-live="polite"></output>
