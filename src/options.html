@@ -28,12 +28,21 @@
       <section>
         <div class="section-title"><h2>サーバーを追加</h2></div>
         <form id="add-server-form" class="server-card server-card--new">
-          <label class="field">
-            <span>ドメイン</span>
-            <input name="domain" type="text" required placeholder="example.test">
-            <small>API URLではなく、サーバーのドメインを入力します。</small>
-          </label>
+          <label class="toggle server-enabled"><input name="enabled" type="checkbox" checked><span>有効</span></label>
+          <label class="field"><span>ドメイン</span><input name="domain" type="text" required placeholder="example.com"></label>
           <label class="field"><span>表示名</span><input name="name" type="text" required placeholder="Server A"></label>
+          <label class="field">
+            <span>Adapter</span>
+            <select name="adapter">
+              <option value="bancho.py">bancho.py</option>
+              <option value="ripple">Ripple</option>
+              <option value="akatsuki">Akatsuki</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>API endpoint</span>
+            <input name="apiEndpoint" type="url" required placeholder="https://api.example.com/v1">
+          </label>
           <label class="field"><span>タイムゾーン</span><input name="timezone" type="text" required value="UTC" placeholder="Asia/Tokyo"></label>
           <label class="field"><span>自分のユーザーID</span><input name="myUserId" type="number" min="1" step="1" placeholder="任意"></label>
           <div class="server-actions">

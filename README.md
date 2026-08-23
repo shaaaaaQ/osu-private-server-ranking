@@ -1,6 +1,6 @@
 # osu! Private Server Ranking
 
-現時点ではbancho.pyのみ対応
+bancho.py / Ripple / Akatsukiに対応
 
 このプロジェクトには、OpenAI Codexを使用して生成したコードが含まれています。
 
@@ -33,9 +33,10 @@ pnpm build
 
 - ドメイン
 - 表示名
+- 有効・無効
+- Adapter（bancho.py / Ripple / Akatsuki）
+- API endpoint
 - タイムゾーン（[IANA Time Zone Database](https://www.iana.org/time-zones) の名称。例: `Asia/Tokyo`）
 - 自分のユーザーID（任意）
 
 サーバーを追加すると、APIへのアクセス許可を求められます。
-
-「タブを開いたときに取得する」はデフォルトでオンです。オンの場合、登録したサーバーのタブを開くまでAPIへ通信しません。

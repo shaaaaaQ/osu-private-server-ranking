@@ -1,12 +1,8 @@
 export {};
 
-type ServerSetting = {
-  id: string;
-  domain: string;
-  name: string;
-  timezone: string;
-  myUserId?: string;
-};
+import { getAdapter } from "./adapters";
+import type { ServerAdapter } from "./adapters/types";
+import type { ServerSetting } from "./server-settings";
 
 type Score = {
   serverId: string;
@@ -62,20 +58,17 @@ async function getScores(message: GetScoresMessage) {
   const stored = await webext.storage.sync.get("servers") as { servers?: ServerSetting[] };
   const server = stored.servers?.find((candidate) => candidate.id === message.serverId);
   if (!server) throw new Error("Unknown Private Server");
+  if (server.enabled === false) throw new Error(`${server.name}: server is disabled`);
 
-  const origin = apiOrigin(server.domain);
+  const adapter = getAdapter(server.adapter);
+  const endpoint = server.apiEndpoint ?? adapter.defaultEndpoint(server.domain);
+  const origin = new URL(endpoint).origin;
   const allowed = await webext.permissions.contains({ origins: [`${origin}/*`] });
   if (!allowed) throw new Error(`${server.name}: API access is not permitted`);
 
   const mode = modeNumber(message.mode);
   if (mode == null) throw new Error("Mode must be osu, taiko, fruits, or mania");
-  const url = new URL("/v1/get_map_scores", origin);
-  url.search = new URLSearchParams({
-    id: String(message.beatmapId),
-    scope: "best",
-    mode: String(mode),
-    limit: String(SCORE_LIMIT),
-  }).toString();
+  const url = adapter.buildScoreUrl(endpoint, { beatmapId: message.beatmapId, mode, limit: SCORE_LIMIT });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -91,13 +84,12 @@ async function getScores(message: GetScoresMessage) {
       throw new Error(`${server.name}: response is too large`);
     }
     const payload = JSON.parse(text) as Record<string, unknown>;
-    if (typeof payload.status === "string" && payload.status !== "success") {
-      throw new Error(`${server.name}: score request was rejected`);
-    }
-    if (!Array.isArray(payload.scores)) throw new Error(`${server.name}: response has no scores array`);
+    let rawScores: Record<string, unknown>[];
+    try { rawScores = adapter.extractScores(payload); }
+    catch (error) { throw new Error(`${server.name}: ${errorMessage(error)}`); }
 
-    const scores = payload.scores
-      .map((raw, index) => normalizeScore(server, asObject(raw), message.beatmapId, message.mode, index + 1))
+    const scores = rawScores
+      .map((raw, index) => normalizeScore(server, adapter, adapter.normalizeRawScore(raw), message.beatmapId, message.mode, index + 1))
       .filter((score): score is Score => score !== null)
       .sort((left, right) => right.score - left.score || (right.pp ?? -1) - (left.pp ?? -1));
     scores.forEach((score, index) => { score.originalServerRank = index + 1; });
@@ -112,6 +104,7 @@ async function getScores(message: GetScoresMessage) {
 
 function normalizeScore(
   server: ServerSetting,
+  adapter: ServerAdapter,
   raw: Record<string, unknown> | null,
   beatmapId: number,
   mode: string,
@@ -130,7 +123,7 @@ function normalizeScore(
     user: {
       id: userId,
       username: stringField(raw, ["player_name", "username", "name"]) ?? `User ${userId}`,
-      avatarUrl: `https://a.${server.domain}/${userId}`,
+      avatarUrl: adapter.avatarUrl(server.domain, userId),
       countryCode: stringField(raw, ["player_country", "country", "country_code"])?.toUpperCase() ?? null,
     },
     beatmapId,
@@ -201,7 +194,6 @@ function modsFromBits(bits: number): string[] {
   return result;
 }
 
-function apiOrigin(domain: string): string { return `https://api.${domain}`; }
 function modeNumber(mode: string): number | null {
   return ({ osu: 0, taiko: 1, fruits: 2, catch: 2, mania: 3 } as Record<string, number>)[mode] ?? null;
 }

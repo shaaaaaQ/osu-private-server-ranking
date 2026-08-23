@@ -48,6 +48,7 @@ type ServerSetting = ServerInfo & {
   domain: string;
   timezone: string;
   myUserId?: string;
+  enabled?: boolean;
 };
 
 type ScoresMessageResponse =
@@ -208,7 +209,7 @@ async function beginLoad(context: NonNullable<ReturnType<typeof pageContext>>): 
 
   try {
     await readSettings();
-    servers = settings.servers.map(({ id, name }) => ({ id, name }));
+    servers = settings.servers.filter((server) => server.enabled !== false).map(({ id, name }) => ({ id, name }));
     if (generation !== loadGeneration) return;
     selectedServerIds = new Set(servers.map((server) => server.id));
     settingsReady = true;
@@ -730,6 +731,9 @@ function checkPage(): void {
 
 window.addEventListener("hashchange", checkPage);
 window.addEventListener("popstate", checkPage);
+webext.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "sync" && (changes.servers || changes.lazyLoad) && currentContext) void beginLoad(currentContext);
+});
 new MutationObserver(checkPage).observe(document.documentElement, { childList: true, subtree: true });
 setInterval(checkPage, 750);
 checkPage();
