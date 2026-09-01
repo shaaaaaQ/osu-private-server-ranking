@@ -2,6 +2,8 @@
 
 bancho.py / Ripple / Akatsukiに対応
 
+通常・Relax（RX）・Autopilot（AP）の譜面ランキングを切り替えて表示できます（ゲームモードが対応している場合）。
+
 このプロジェクトには、OpenAI Codexを使用して生成したコードが含まれています。
 
 ## ビルド

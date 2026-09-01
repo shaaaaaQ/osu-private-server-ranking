@@ -1,7 +1,7 @@
 export {};
 
 import { getAdapter } from "./adapters";
-import type { ServerAdapter } from "./adapters/types";
+import type { RankingVariant, ServerAdapter } from "./adapters/types";
 import type { ServerSetting } from "./server-settings";
 
 type Score = {
@@ -39,9 +39,10 @@ type GetScoresMessage = {
   serverId: string;
   beatmapId: number;
   mode: string;
+  variant: RankingVariant;
 };
 
-const REQUEST_TIMEOUT_MS = 6_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024;
 const SCORE_LIMIT = 100;
 const webext = (globalThis as typeof globalThis & { browser?: typeof chrome }).browser ?? chrome;
@@ -68,7 +69,18 @@ async function getScores(message: GetScoresMessage) {
 
   const mode = modeNumber(message.mode);
   if (mode == null) throw new Error("Mode must be osu, taiko, fruits, or mania");
-  const url = adapter.buildScoreUrl(endpoint, { beatmapId: message.beatmapId, mode, limit: SCORE_LIMIT });
+  if (!variantAvailable(message.mode, message.variant)) {
+    throw new Error(`${message.variant} is not available for ${message.mode}`);
+  }
+  if (!adapter.supportsVariant(message.variant)) {
+    throw new Error(`${server.name}: Autopilot is not supported by the Ripple adapter`);
+  }
+  const url = adapter.buildScoreUrl(endpoint, {
+    beatmapId: message.beatmapId,
+    mode,
+    variant: message.variant,
+    limit: SCORE_LIMIT,
+  });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -89,7 +101,7 @@ async function getScores(message: GetScoresMessage) {
     catch (error) { throw new Error(`${server.name}: ${errorMessage(error)}`); }
 
     const scores = rawScores
-      .map((raw, index) => normalizeScore(server, adapter, adapter.normalizeRawScore(raw), message.beatmapId, message.mode, index + 1))
+      .map((raw, index) => normalizeScore(server, adapter, adapter.normalizeRawScore(raw), message.beatmapId, message.mode, message.variant, index + 1))
       .filter((score): score is Score => score !== null)
       .sort((left, right) => right.score - left.score || (right.pp ?? -1) - (left.pp ?? -1));
     scores.forEach((score, index) => { score.originalServerRank = index + 1; });
@@ -108,6 +120,7 @@ function normalizeScore(
   raw: Record<string, unknown> | null,
   beatmapId: number,
   mode: string,
+  variant: RankingVariant,
   rank: number,
 ): Score | null {
   if (!raw) return null;
@@ -139,7 +152,7 @@ function normalizeScore(
     countMiss: numberField(raw, ["nmiss", "count_miss", "countMiss"]),
     pp: numberField(raw, ["pp"]),
     grade: stringField(raw, ["grade", "rank"]),
-    mods: normalizeMods(raw.mods),
+    mods: withVariantMod(normalizeMods(raw.mods), variant),
     playedAt: normalizeTime(stringField(raw, ["play_time", "played_at", "ended_at"]), server.timezone),
     perfect: booleanField(raw, ["perfect"]),
   };
@@ -197,6 +210,15 @@ function modsFromBits(bits: number): string[] {
 function modeNumber(mode: string): number | null {
   return ({ osu: 0, taiko: 1, fruits: 2, catch: 2, mania: 3 } as Record<string, number>)[mode] ?? null;
 }
+function variantAvailable(mode: string, variant: RankingVariant): boolean {
+  if (variant === "autopilot") return mode === "osu";
+  if (variant === "relax") return mode !== "mania";
+  return true;
+}
+function withVariantMod(mods: string[], variant: RankingVariant): string[] {
+  const acronym = variant === "relax" ? "RX" : variant === "autopilot" ? "AP" : null;
+  return acronym && !mods.includes(acronym) ? [...mods, acronym] : mods;
+}
 function asObject(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -223,7 +245,8 @@ function isGetScoresMessage(value: unknown): value is GetScoresMessage {
   return message?.type === "getScores"
     && typeof message.serverId === "string"
     && Number.isSafeInteger(message.beatmapId) && Number(message.beatmapId) > 0
-    && typeof message.mode === "string";
+    && typeof message.mode === "string"
+    && (message.variant === "vanilla" || message.variant === "relax" || message.variant === "autopilot");
 }
 function isOsuPage(url?: string): boolean {
   if (!url) return false;

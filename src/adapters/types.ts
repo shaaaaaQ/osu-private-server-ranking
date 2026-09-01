@@ -3,12 +3,26 @@ import type { AdapterId } from "../server-settings";
 export type ScoreRequest = {
   beatmapId: number;
   mode: number;
+  variant: RankingVariant;
   limit: number;
 };
+
+export type RankingVariant = "vanilla" | "relax" | "autopilot";
+
+export function relaxValue(variant: RankingVariant): string {
+  return String(({ vanilla: 0, relax: 1, autopilot: 2 } as const)[variant]);
+}
+
+export function banchoPyMode(mode: number, variant: RankingVariant): number {
+  if (variant === "relax") return mode + 4;
+  if (variant === "autopilot") return 8;
+  return mode;
+}
 
 export type ServerAdapter = {
   id: AdapterId;
   label: string;
+  supportsVariant(variant: RankingVariant): boolean;
   defaultEndpoint(domain: string): string;
   avatarUrl(domain: string, userId: number): string;
   buildScoreUrl(endpoint: string, request: ScoreRequest): URL;

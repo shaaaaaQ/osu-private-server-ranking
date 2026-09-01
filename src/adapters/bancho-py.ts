@@ -1,9 +1,10 @@
 import type { ServerAdapter } from "./types";
-import { endpointUrl, scoresArray } from "./types";
+import { banchoPyMode, endpointUrl, scoresArray } from "./types";
 
 export const banchoPyAdapter: ServerAdapter = {
   id: "bancho.py",
   label: "bancho.py",
+  supportsVariant: () => true,
   defaultEndpoint: (domain) => `https://api.${domain}/v1`,
   avatarUrl: (domain, userId) => `https://a.${domain}/${userId}`,
   buildScoreUrl(endpoint, request) {
@@ -11,7 +12,7 @@ export const banchoPyAdapter: ServerAdapter = {
     url.search = new URLSearchParams({
       id: String(request.beatmapId),
       scope: "best",
-      mode: String(request.mode),
+      mode: String(banchoPyMode(request.mode, request.variant)),
       limit: String(request.limit),
     }).toString();
     return url;

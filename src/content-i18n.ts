@@ -1,6 +1,10 @@
 export type Translations = {
   privateServer: string;
   server: string;
+  ranking: string;
+  vanilla: string;
+  relax: string;
+  autopilot: string;
   allPrivateServers: string;
   loadingServerList: string;
   loadedServers: (loaded: number, total: number) => string;
@@ -25,7 +29,8 @@ export type Translations = {
 // Add another language here using its <html lang> base code. Unknown languages use English.
 const TRANSLATIONS: Record<string, Translations> = {
   en: {
-    privateServer: "Private Server", server: "Server", allPrivateServers: "All Private Servers",
+    privateServer: "Private Server", server: "Server", ranking: "Ranking",
+    vanilla: "Vanilla", relax: "Relax (RX)", autopilot: "Autopilot (AP)", allPrivateServers: "All Private Servers",
     loadingServerList: "Loading server list…", loadedServers: (loaded, total) => `Loaded ${loaded} / ${total} servers`,
     loaded: "Loaded", loading: "Loading", unavailable: "Unavailable",
     configErrorSuffix: "Check the extension settings.", rank: "Rank", score: "Score", accuracy: "Accuracy",
@@ -35,7 +40,8 @@ const TRANSLATIONS: Record<string, Translations> = {
     noServersConfigured: "No Private Servers configured",
   },
   ja: {
-    privateServer: "プライベートサーバー", server: "サーバー", allPrivateServers: "すべてのプライベートサーバー",
+    privateServer: "プライベートサーバー", server: "サーバー", ranking: "ランキング",
+    vanilla: "Vanilla", relax: "Relax (RX)", autopilot: "Autopilot (AP)", allPrivateServers: "すべてのプライベートサーバー",
     loadingServerList: "サーバー一覧を読み込み中…", loadedServers: (loaded, total) => `読み込み済み ${loaded} / ${total} サーバー`,
     loaded: "読み込み済み", loading: "読み込み中", unavailable: "利用不可",
     configErrorSuffix: "拡張機能の設定を確認してください。", rank: "順位", score: "スコア", accuracy: "精度",

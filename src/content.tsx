@@ -7,6 +7,7 @@ import type { Translations } from "./content-i18n";
 import { HIT_COLUMNS } from "./score-columns";
 import type { HitColumn } from "./score-columns";
 import { userProfileUrl } from "./server-settings";
+import type { RankingVariant } from "./adapters/types";
 
 type ServerInfo = { id: string; name: string };
 type ServerStatus = "loading" | "loaded" | "error";
@@ -92,6 +93,7 @@ let officialActiveClasses = new Map<HTMLElement, string[]>();
 let currentContext: NonNullable<ReturnType<typeof pageContext>> | null = null;
 let settingsReady = false;
 let scoresStarted = false;
+let selectedVariant: RankingVariant = "vanilla";
 
 function pageLocale(): string {
   return document.documentElement.lang || "en";
@@ -128,6 +130,7 @@ async function beginLoad(context: NonNullable<ReturnType<typeof pageContext>>): 
   const generation = loadGeneration;
   settingsReady = false;
   scoresStarted = false;
+  if (!availableVariants(context.mode).includes(selectedVariant)) selectedVariant = "vanilla";
   loaded = new Map();
   servers = [];
   allSelected = true;
@@ -174,6 +177,7 @@ async function fetchServer(
       serverId: server.id,
       beatmapId: context.beatmapId,
       mode: context.mode,
+      variant: selectedVariant,
     }) as ScoresMessageResponse;
     if (!response?.ok) throw new Error(response?.error || "Background request failed");
     if (generation !== loadGeneration) return;
@@ -314,6 +318,12 @@ function bindEvents(): void {
     tab.addEventListener("click", deactivatePrivateTab, { capture: true });
   }
   root?.addEventListener("change", (event) => {
+    const variantSelect = (event.target as Element).closest<HTMLSelectElement>("[data-ranking-filter]");
+    if (variantSelect && currentContext) {
+      selectedVariant = variantSelect.value as RankingVariant;
+      restartScoreLoads(currentContext);
+      return;
+    }
     const select = (event.target as Element).closest<HTMLSelectElement>("[data-server-filter]");
     if (!select) return;
     if (select.value === "__all__") {
@@ -333,6 +343,13 @@ function bindEvents(): void {
     const details = root?.querySelector<HTMLElement>("[data-status-details]");
     if (details) details.hidden = !statusExpanded;
   });
+}
+
+function restartScoreLoads(context: NonNullable<ReturnType<typeof pageContext>>): void {
+  loadGeneration += 1;
+  scoresStarted = false;
+  loaded = new Map();
+  startScoreLoads(context, loadGeneration);
 }
 
 function activatePrivateTab(): void {
@@ -394,12 +411,19 @@ function RankingView() {
       <button class="psr__status-toggle" type="button" data-status-toggle aria-expanded={statusExpanded} disabled={!servers.length}>
         {servers.length ? t.loadedServers(loadedCount, servers.length) : t.loadingServerList}
       </button>
-      <label class="psr__filter">{t.server}
-        <select data-server-filter value={selectedId} disabled={!servers.length}>
-          <option value="__all__">{t.allPrivateServers}</option>
-          {servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
-        </select>
-      </label>
+      <div class="psr__filters">
+        <label class="psr__filter">{t.ranking}
+          <select data-ranking-filter value={selectedVariant}>
+            {availableVariants(currentContext?.mode).map((variant) => <option key={variant} value={variant}>{variantLabel(variant)}</option>)}
+          </select>
+        </label>
+        <label class="psr__filter">{t.server}
+          <select data-server-filter value={selectedId} disabled={!servers.length}>
+            <option value="__all__">{t.allPrivateServers}</option>
+            {servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+          </select>
+        </label>
+      </div>
     </div>
     <div class="psr__status-details" data-status-details hidden={!statusExpanded}><StatusChips /></div>
     {fatal ? <div class="psr__notice psr__notice--error">{fatal} — {t.configErrorSuffix}</div> : null}
@@ -448,7 +472,7 @@ function FeaturedScore({ score, position }: { score: Score; position: number | s
   const t = translations();
   const rankClass = normalizedGrade(score.grade);
   const hits = hitColumns(score.mode);
-  return <div class="beatmap-scoreboard-top__item"><div class="beatmap-score-top">
+  return <div class="beatmap-score-top">
     <div class="beatmap-score-top__section">
       <div class="beatmap-score-top__wrapping-container beatmap-score-top__wrapping-container--left">
         <div class="beatmap-score-top__position"><div class="beatmap-score-top__position-number">#{position}</div>{rankClass ? <div class={`score-rank score-rank--tiny score-rank--${rankClass}`}></div> : null}</div>
@@ -473,7 +497,7 @@ function FeaturedScore({ score, position }: { score: Score; position: number | s
         </div>
       </div>
     </div>
-  </div></div>;
+  </div>;
 }
 
 function TopStat({ label, value, hitModifier, wider = false, perfect = false }: { label: string; value: ComponentChildren; hitModifier?: string; wider?: boolean; perfect?: boolean }) {
@@ -638,6 +662,15 @@ function formatAccuracy(value: number | null): string { return value == null ? "
 function nullableNumber(value: number | null, suffix = ""): string { return value == null ? "—" : `${number.format(value)}${suffix}`; }
 function hitColumns(mode?: string): readonly HitColumn[] {
   return HIT_COLUMNS[mode === "catch" ? "fruits" : mode ?? "osu"] ?? HIT_COLUMNS.osu;
+}
+function availableVariants(mode?: string): RankingVariant[] {
+  if (mode === "osu") return ["vanilla", "relax", "autopilot"];
+  if (mode === "taiko" || mode === "fruits" || mode === "catch") return ["vanilla", "relax"];
+  return ["vanilla"];
+}
+function variantLabel(variant: RankingVariant): string {
+  const t = translations();
+  return ({ vanilla: t.vanilla, relax: t.relax, autopilot: t.autopilot })[variant];
 }
 function hitLabel(hit: HitColumn): string {
   return activeLocale().startsWith("ja") && hit.modifier === "miss" ? "ミス" : hit.label;
